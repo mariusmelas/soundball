@@ -29,14 +29,22 @@ void squarewave(double time, float frequency, Sint16 *sample, int max) {
 
 }
 
+/*
+    Sawtooth function
+*/
 
+void sawtooth(double time, float frequency, Sint16 *sample, int max) {
+    float p = 1.0/frequency;
+    double val = 2 * ((time/p) - floor(0.5 + (time/p))) * max;
+    *sample = (Sint16)val;
+}
 
 void audio_callback(void *userdata, Uint8 *stream_, int len) {
 
     Sint16 *stream = (Sint16*)stream_;
     callback_struct *user_data = userdata;
 
-    float freq = 440.0;
+    float freq = 220.0;
     float duration = 3;
     float sample_len = len / sizeof(Sint16);
     int *sample_nr = (*user_data).sample_nr;
@@ -77,7 +85,7 @@ int main(int argc, char* argv[])
     struct callback_struct user_data;
     int sample_nr = 12;
     user_data.sample_nr = &sample_nr;
-    user_data.periodic_function = squarewave;
+    user_data.periodic_function = sawtooth;
 
     SDL_AudioSpec want,have;
     SDL_AudioDeviceID dev;
