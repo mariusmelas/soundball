@@ -8,6 +8,7 @@
 typedef void (*periodic_function)(double time, float frequency, Sint16 *sample, int max);
 typedef struct callback_struct {
     int *sample_nr;
+    int *frequency;
     periodic_function periodic_function;
 
 } callback_struct;
@@ -44,17 +45,14 @@ void audio_callback(void *userdata, Uint8 *stream_, int len) {
     Sint16 *stream = (Sint16*)stream_;
     callback_struct *user_data = userdata;
 
-    float freq = 220.0;
-    float duration = 3;
     float sample_len = len / sizeof(Sint16);
     int *sample_nr = (*user_data).sample_nr;
-    float phase = 0.0;
-
+ 
     Sint16 sample;
     for(int i = 0; i < sample_len;i++, (*sample_nr)++) {
+
         double time = (double) *sample_nr / 44100;
-        Sint16 sample;
-        (*user_data).periodic_function(time, freq, &sample, 28000);
+        (*user_data).periodic_function(time, *(user_data)->frequency, &sample, 28000);
         *stream++ = sample;
     }
 
@@ -83,9 +81,11 @@ int main(int argc, char* argv[])
     }
 
     struct callback_struct user_data;
-    int sample_nr = 12;
+    int sample_nr = 0;
+    int frequency = 240;
     user_data.sample_nr = &sample_nr;
-    user_data.periodic_function = sawtooth;
+    user_data.frequency = &frequency;
+    user_data.periodic_function = sinewave;
 
     SDL_AudioSpec want,have;
     SDL_AudioDeviceID dev;
@@ -95,11 +95,10 @@ int main(int argc, char* argv[])
     want.freq = 44100;
     want.format = AUDIO_S16SYS;
     want.channels = 1;
-    want.samples = 512;
+    want.samples = 1024;
     want.callback = audio_callback;
     want.userdata = &user_data;
     dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
-
 
     // Play audio
     SDL_PauseAudioDevice(dev, 0);
@@ -122,6 +121,7 @@ int main(int argc, char* argv[])
     SDL_RenderPresent(renderer);
 
     // Main loop
+    int mouseX, mouseY;
     int run_program = 1;
     while(run_program) {
         SDL_Event e;
@@ -132,8 +132,17 @@ int main(int argc, char* argv[])
                 case SDL_QUIT:
                     run_program = 0;
                     break;
+                case SDL_KEYDOWN:
+                    char key = (char) *SDL_GetKeyName(e.key.keysym.sym);
+                    if(key == 'P') {
+                        frequency += 10;
+                    } else if(key == 'O') {
+                        frequency -= 10;
 
+                    }
+                    continue;
             }
+
             SDL_Delay(33);
             SDL_RenderPresent(renderer);
         }   
