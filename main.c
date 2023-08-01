@@ -1,70 +1,109 @@
 #include <stdio.h>
-#include <stdlib.h>
 #include <math.h>
 #include <SDL2/SDL.h>
 
-#define PI 3.1459265
 
-typedef void (*periodic_function)(double time, float frequency, Sint16 *sample, int max);
+#include "wavetables/AKWF_saw8bit.h"
+#include "wavetables/AKWF_tri8bit.h"
+#include "wavetables/AKWF_fmsynth_0004.h"
+
+#define PI 3.14159265
+#define WIDTH 512
+#define HEIGHT 512
+
+
+#define NUM_SAMPLES 256
+#define SAMPLE_RATE 48000
+
+// Float arrays for the normalized wavetables.
+// Must be initialized in the main function.
+float saw8bit[NUM_SAMPLES];
+float tri8bit[NUM_SAMPLES];
+float fmsynth_0004[NUM_SAMPLES];
+
+
+/*
+    normalize_uint16_array() converts uint16 array to range [-1,1]
+*/
+
+void normalize_uint16_array(const uint16_t input_array[],float output_array[],  int length) {
+    // Find the minimum and maximum value in list.
+    float min = (float) UINT16_MAX; 
+    float max = 0.0f;
+
+    for(int i = 0; i < length; i++) {
+        min = input_array[i] < min ? (float) input_array[i] : min;
+        max = input_array[i] > max ? (float) input_array[i] : max;
+    }
+    float_t range = max - min;
+
+    printf("MIN: %f MAX: %f RANGE: %f\n", min,max,range);
+
+    // Convert numbers to range -1,1
+    for(int i = 0; i < length; i++) { 
+        output_array[i] = 2.0 * (input_array[i] - min) / range - 1;
+    }
+
+}
+
+
+/*
+    Struct that will be used by the callback_audio function
+*/
 typedef struct callback_struct {
     int *sample_nr;
-    int *frequency;
-    periodic_function periodic_function;
-
+    double *frequency;
+    double *new_frequency;
+    double *phase;
+    double *LFO_phase;
+    double *morph_val;
 } callback_struct;
 
 /*
-    Sinewave function 
-*/    
-void sinewave(double time, float frequency, Sint16 *sample, int max) {
-    double val = sin(2 * PI * frequency * time)*max;
-    *sample = (Sint16)(val);
-}
-
-/*
-    Squarewave function
+    audio_callbak is used by SDL2.
 */
-void squarewave(double time, float frequency, Sint16 *sample, int max) {
-    double val = sin(2 * PI * frequency * time)*max;
-    *sample = (Sint16)(val >= 0 ? max : -max);
-
-}
-
-/*
-    Sawtooth function
-*/
-
-void sawtooth(double time, float frequency, Sint16 *sample, int max) {
-    float p = 1.0/frequency;
-    double val = 2 * ((time/p) - floor(0.5 + (time/p))) * max;
-    *sample = (Sint16)val;
-}
-
 void audio_callback(void *userdata, Uint8 *stream_, int len) {
-
     Sint16 *stream = (Sint16*)stream_;
     callback_struct *user_data = userdata;
 
-    float sample_len = len / sizeof(Sint16);
+    int sample_len = len / sizeof(Sint16);
     int *sample_nr = (*user_data).sample_nr;
- 
-    Sint16 sample;
-    for(int i = 0; i < sample_len;i++, (*sample_nr)++) {
+    double *frequency = (*user_data).frequency;
+    double *phase = (*user_data).phase;
+    double *LFO_phase = (*user_data).LFO_phase;
+    double *morph_value = (*user_data).morph_val;
+    double phase_incr = 2 * PI * *frequency / SAMPLE_RATE;
 
-        double time = (double) *sample_nr / 44100;
-        (*user_data).periodic_function(time, *(user_data)->frequency, &sample, 28000);
-        *stream++ = sample;
+    double sample;
+
+    for (int i = 0; i < sample_len; i++, (*sample_nr)++) {
+        int k = (int) (*phase * NUM_SAMPLES / (2*PI));
+        /* morph two wavetables together. morph_value is controlled by mouse motion */
+        //sample = (Sint16) ((fmsynth_0004[k] - 32000) * (1- *morph_value) + (tri8bit[k] - 32000)  * *morph_value) * 0.5;
+        sample = fmsynth_0004[k];
+        *stream++ = (Sint16) (sample * 32000);
+
+        *phase = fmod(*phase + phase_incr, 2*PI);
+        // *LFO_phase = fmod(*LFO_phase + 2 *PI*0.3 / SAMPLE_RATE, 2*PI);
+
     }
 
 }
 
 int main(int argc, char* argv[])
 {
+    
+    
+    // Normalize wavetable arrays. 
+    normalize_uint16_array(AKWF_saw8bit, saw8bit, NUM_SAMPLES);
+    normalize_uint16_array(AKWF_tri8bit, tri8bit, NUM_SAMPLES);
+    normalize_uint16_array(AKWF_fmsynth_0004, fmsynth_0004, NUM_SAMPLES);
 
 
+
+    // Set up SDL
     SDL_Window *window;
     SDL_Renderer *renderer;
-
 
     if(SDL_Init(SDL_INIT_AUDIO | SDL_INIT_VIDEO) < 0)
     {
@@ -72,80 +111,76 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    SDL_CreateWindowAndRenderer(680,440, 0, &window, &renderer);
-
+    SDL_CreateWindowAndRenderer(WIDTH,HEIGHT, 0, &window, &renderer);
     if(!window)
     {
         printf("Failed to create window\n");
         return -1;
     }
 
+    // Set up user_data struct
     struct callback_struct user_data;
     int sample_nr = 0;
-    int frequency = 240;
+    double frequency = 150.0;
+    double phase = 0.0;
+    double LFO_phase = 0.0;
+    double morph_val = 0.0;
     user_data.sample_nr = &sample_nr;
     user_data.frequency = &frequency;
-    user_data.periodic_function = sinewave;
+    user_data.phase = &phase;
+    user_data.LFO_phase = &LFO_phase;
+    user_data.morph_val = &morph_val;
 
     SDL_AudioSpec want,have;
     SDL_AudioDeviceID dev;
 
     SDL_memset(&want, 0, sizeof(want));
-    // Samples per second
-    want.freq = 44100;
+    want.freq = 48000;
     want.format = AUDIO_S16SYS;
     want.channels = 1;
     want.samples = 1024;
     want.callback = audio_callback;
     want.userdata = &user_data;
-    dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_ANY_CHANGE);
+    if((dev = SDL_OpenAudioDevice(NULL, 0, &want, &have, SDL_AUDIO_ALLOW_FORMAT_CHANGE)) < 0) {
+        printf("Error open audio device\n");
+        return -1;
+    }
+
+    SDL_SetRenderDrawColor(renderer, 0,0,0,0);
+    SDL_RenderClear(renderer);
+    SDL_RenderPresent(renderer);
 
     // Play audio
     SDL_PauseAudioDevice(dev, 0);
 
-    // Render wave function
-    SDL_SetRenderDrawColor(renderer, 0,0,0,0);
-    SDL_RenderClear(renderer);
-    SDL_SetRenderDrawColor(renderer, 255,0,0,255);
-
-    // draw wave-function
-    double draw_freq = 5/680.0;
-    int prev_sample = 0;
-    for(int i=1; i < 680; i++) {
-        Sint16 sample;
-        user_data.periodic_function((double) i, draw_freq, &sample, 100);
-        SDL_RenderDrawLine(renderer,i-1,prev_sample + 170,i,(int) sample + 170);
-        prev_sample = (int) sample;
-    }
-
-    SDL_RenderPresent(renderer);
-
     // Main loop
-    int mouseX, mouseY;
+    int mousex,mousey;
     int run_program = 1;
     while(run_program) {
         SDL_Event e;
         while(SDL_PollEvent(&e) > 0)
         {
-            // Handle events 
             switch(e.type) {
                 case SDL_QUIT:
                     run_program = 0;
                     break;
-                case SDL_KEYDOWN:
-                    char key = (char) *SDL_GetKeyName(e.key.keysym.sym);
-                    if(key == 'P') {
-                        frequency += 10;
-                    } else if(key == 'O') {
-                        frequency -= 10;
 
-                    }
-                    continue;
-            }
+                case SDL_MOUSEMOTION:
+                     SDL_GetGlobalMouseState(&mousex,&mousey);
+                     float x_normalized = (float) (mousex);
+                     float y_normalized = (float) mousey / HEIGHT;
 
-            SDL_Delay(33);
-            SDL_RenderPresent(renderer);
+                     morph_val = y_normalized;
+                     frequency = x_normalized;
+
+                     continue;
+
+                default:
+                    break;
+            }       
         }   
+        SDL_RenderPresent(renderer);
+
     }
 
     // Stop playing audio
