@@ -6,6 +6,9 @@
 #include "wavetables/AKWF_saw8bit.h"
 #include "wavetables/AKWF_tri8bit.h"
 #include "wavetables/AKWF_fmsynth_0004.h"
+#include "wavetables/AKWF_fmsynth_0081.h"
+#include "wavetables/AKWF_fmsynth_0096.h"
+
 
 #define PI 3.14159265
 #define WIDTH 512
@@ -20,6 +23,9 @@
 float saw8bit[NUM_SAMPLES];
 float tri8bit[NUM_SAMPLES];
 float fmsynth_0004[NUM_SAMPLES];
+float fmsynth_0081[NUM_SAMPLES];
+float fmsynth_0096[NUM_SAMPLES];
+
 
 
 /*
@@ -45,7 +51,6 @@ void normalize_uint16_array(const uint16_t input_array[],float output_array[],  
     }
 
 }
-
 
 /*
     Struct that will be used by the callback_audio function
@@ -79,9 +84,9 @@ void audio_callback(void *userdata, Uint8 *stream_, int len) {
     for (int i = 0; i < sample_len; i++, (*sample_nr)++) {
         int k = (int) (*phase * NUM_SAMPLES / (2*PI));
         /* morph two wavetables together. morph_value is controlled by mouse motion */
-        //sample = (Sint16) ((fmsynth_0004[k] - 32000) * (1- *morph_value) + (tri8bit[k] - 32000)  * *morph_value) * 0.5;
-        sample = fmsynth_0004[k];
-        *stream++ = (Sint16) (sample * 32000);
+        sample = (saw8bit[k] * (1- *morph_value) + fmsynth_0096[k] * *morph_value);
+        //sample = fmsynth_0096[k];
+        *stream++ = (Sint16) (sample * 20000);
 
         *phase = fmod(*phase + phase_incr, 2*PI);
         // *LFO_phase = fmod(*LFO_phase + 2 *PI*0.3 / SAMPLE_RATE, 2*PI);
@@ -98,6 +103,9 @@ int main(int argc, char* argv[])
     normalize_uint16_array(AKWF_saw8bit, saw8bit, NUM_SAMPLES);
     normalize_uint16_array(AKWF_tri8bit, tri8bit, NUM_SAMPLES);
     normalize_uint16_array(AKWF_fmsynth_0004, fmsynth_0004, NUM_SAMPLES);
+    normalize_uint16_array(AKWF_fmsynth_0081, fmsynth_0081, NUM_SAMPLES);
+    normalize_uint16_array(AKWF_fmsynth_0096, fmsynth_0096, NUM_SAMPLES);
+
 
 
 
