@@ -1,22 +1,17 @@
 #include <stdio.h>
 #include <math.h>
 #include <SDL2/SDL.h>
-
+#include "record_samples.h"
 
 #include "wavetables/AKWF_saw8bit.h"
 #include "wavetables/AKWF_tri8bit.h"
 #include "wavetables/AKWF_fmsynth_0004.h"
 #include "wavetables/AKWF_fmsynth_0081.h"
 #include "wavetables/AKWF_fmsynth_0096.h"
+#include "./constants.h"
 
-
-#define PI 3.14159265
 #define WIDTH 512
 #define HEIGHT 512
-
-
-#define NUM_SAMPLES 256
-#define SAMPLE_RATE 48000
 
 // Float arrays for the normalized wavetables.
 // Must be initialized in the main function.
@@ -86,8 +81,12 @@ void audio_callback(void *userdata, Uint8 *stream_, int len) {
         /* morph two wavetables together. morph_value is controlled by mouse motion */
         sample = (saw8bit[k] * (1- *morph_value) + fmsynth_0096[k] * *morph_value);
         //sample = fmsynth_0096[k];
-        *stream++ = (Sint16) (sample * 20000);
 
+        // Record the sample
+        record_sample((int16_t) (sample * 32000));
+        // Add sample to stream
+        *stream++ = (Sint16) (sample * 20000);
+        // Increment phase
         *phase = fmod(*phase + phase_incr, 2*PI);
         // *LFO_phase = fmod(*LFO_phase + 2 *PI*0.3 / SAMPLE_RATE, 2*PI);
 
@@ -161,6 +160,9 @@ int main(int argc, char* argv[])
     // Play audio
     SDL_PauseAudioDevice(dev, 0);
 
+    // Start the record
+    start_record();
+
     // Main loop
     int mousex,mousey;
     int run_program = 1;
@@ -194,6 +196,10 @@ int main(int argc, char* argv[])
     // Stop playing audio
     SDL_PauseAudioDevice(dev, 1);
     
+    // Stop recording audio
+
+    stop_record();
+
     // Clean up and quit
     SDL_CloseAudioDevice(dev);
     SDL_DestroyRenderer(renderer);
